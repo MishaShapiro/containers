@@ -1,0 +1,36 @@
+services:
+  api:
+    image: lab1/api:slim
+    ports: ["8080:8080"]
+    mem_limit: 128m
+    cpus: 0.5
+    pids_limit: 64
+    restart: unless-stopped        
+
+  cadvisor:
+    image: gcr.io/cadvisor/cadvisor:v0.52.1
+    command: ["--docker=unix:///nonexistent.sock", "--housekeeping_interval=10s"]
+    privileged: true
+    cgroup: host                   
+    pid: host
+    devices: [/dev/kmsg]
+    volumes:
+      - /:/rootfs:ro
+      - /var/run:/var/run:ro
+      - /sys:/sys:ro
+      - /sys/fs/cgroup:/sys/fs/cgroup:ro
+      - /var/lib/docker/:/var/lib/docker:ro
+      - /dev/disk/:/dev/disk:ro
+    ports: ["8081:8080"]
+
+  prometheus:
+    image: prom/prometheus:v2.54.1
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./alerts.yml:/etc/prometheus/alerts.yml:ro
+    ports: ["9090:9090"]
+
+  grafana:
+    image: grafana/grafana:11.2.0
+    environment: [GF_SECURITY_ADMIN_PASSWORD=admin]
+    ports: ["3000:3000"]

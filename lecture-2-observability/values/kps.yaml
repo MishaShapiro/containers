@@ -1,0 +1,129 @@
+fullnameOverride: kps
+
+# На minikube эти компоненты слушают 127.0.0.1, скрейп всегда падает и даёт ложные алерты.
+kubeEtcd:              { enabled: false }
+kubeScheduler:         { enabled: false }
+kubeControllerManager: { enabled: false }
+kubeProxy:             { enabled: false }
+
+# метрики контейнеров через CRI (/metrics/resource): встроенный cAdvisor kubelet при Docker 29 не видит контейнеры,
+# и без этого krr (лаба 4) получает No data
+kubelet:
+  serviceMonitor:
+    resource: true
+    resourcePath: /metrics/resource   # по умолчанию /metrics/resource/v1alpha1 — в новых Kubernetes его нет
+
+prometheus:
+  service:                               # постоянный доступ к UI без port-forward
+    type: NodePort
+    nodePort: 30090
+  prometheusSpec:
+    # По умолчанию Prometheus берёт только ServiceMonitor/PrometheusRule с меткой release=kps.
+    # Выключаем фильтр, чтобы подхватывались объекты из чартов наших сервисов (лабы 3-6).
+    serviceMonitorSelectorNilUsesHelmValues: false
+    podMonitorSelectorNilUsesHelmValues: false
+    ruleSelectorNilUsesHelmValues: false
+    enableRemoteWriteReceiver: true      # сюда k6 будет писать клиентские метрики (лабы 4-6)
+    scrapeInterval: 15s
+    evaluationInterval: 15s
+    retention: 2d
+    retentionSize: 2GB
+    resources:                           # на VM 8 ГБ ограничиваем аппетит стека
+      requests: { cpu: 100m, memory: 400Mi }
+      limits:   { memory: 1Gi }
+
+prometheusOperator:
+  resources:
+    requests: { cpu: 20m, memory: 64Mi }
+    limits:   { memory: 192Mi }
+
+kube-state-metrics:
+  resources:
+    requests: { cpu: 10m, memory: 48Mi }
+    limits:   { memory: 128Mi }
+
+grafana:
+  adminPassword: admin
+  service:
+    type: NodePort
+    nodePort: 30300
+  resources:                             # Grafana 12-13 занимает ~450-500 МБ: лимит ниже → OOMKilled
+    requests: { cpu: 50m, memory: 384Mi }
+    limits:   { memory: 1Gi }
+  sidecar:
+    dashboards:
+      searchNamespace: ALL               # дашборды-ConfigMap из любых namespace
+  additionalDataSources:
+    - name: Loki
+      type: loki
+      uid: loki
+      url: http://loki.monitoring.svc.cluster.local:3100
+      jsonData:
+        derivedFields:                   # ссылка "trace_id в логе -> трейс в Jaeger"
+          - name: TraceID
+            datasourceUid: jaeger
+            matcherRegex: '"trace_id":\s*"(\w+)"'
+            url: '$${__value.raw}'       # $$ — экранирование в provisioning Grafana
+    - name: Jaeger
+      type: jaeger
+      uid: jaeger
+      url: http://jaeger-query.monitoring.svc.cluster.local:16686
+
+alertmanager:
+  service:
+    type: NodePort
+    nodePort: 30093
+  alertmanagerSpec:
+    resources:
+      requests: { cpu: 10m, memory: 32Mi }
+      limits:   { memory: 128Mi }
+  config:
+    global:
+      resolve_timeout: 5m
+    route:
+      receiver: webhook
+      group_by: [alertname, namespace]
+      group_wait: 10s
+      group_interval: 1m
+      repeat_interval: 1h
+      routes:
+        - receiver: "null"
+          matchers: [ 'alertname = "Watchdog"' ]
+    receivers:
+      - name: "null"
+      - name: webhook
+        webhook_configs:
+          - url: http://alert-echo.demo.svc.cluster.local:8080/
+            send_resolved: true
+
+# Правила алертов части 4 (Prometheus подхватит их как PrometheusRule)
+additionalPrometheusRulesMap:
+  api-rules:
+    groups:
+      - name: api.rules
+        rules:
+          - alert: ApiHighErrorRate
+            expr: |
+              sum(rate(http_requests_total{job="api",status=~"5.."}[2m]))
+                / sum(rate(http_requests_total{job="api"}[2m])) > 0.05
+            for: 2m
+            labels: { severity: critical }
+            annotations:
+              summary: "api: доля 5xx > 5% уже 2 минуты"
+              description: "Текущая доля ошибок {{ $value | humanizePercentage }}. Смотри логи level=ERROR и трейсы со статусом error."
+          - alert: ApiHighLatencyP95
+            expr: |
+              histogram_quantile(0.95,
+                sum by (le) (rate(http_request_duration_seconds_bucket{job="api"}[5m]))) > 1
+            for: 3m
+            labels: { severity: critical }
+            annotations:
+              summary: "api: p95 ответа > 1s уже 3 минуты"
+              description: "p95 = {{ $value | humanizeDuration }}. Найди в Jaeger самые долгие трейсы и самый длинный спан."
+          - alert: ApiDown
+            expr: absent(up{job="api"} == 1)
+            for: 1m
+            labels: { severity: critical }
+            annotations:
+              summary: "api: нет ни одной живой цели скрейпа"
+              description: "Сервис не отвечает или реплик 0. Проверь kubectl get pods,endpoints -n demo."

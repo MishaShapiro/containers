@@ -1,0 +1,44 @@
+# values лабы 4: всё, что лаба 4 включила или поменяла поверх базы (лаба 3).
+# Применять: ~/containers/shop/scripts/deploy.sh 4
+#
+# resources — по рекомендациям krr (krr-report.json, стратегия simple, нагрузка k6 20 RPS × 15 мин):
+#   CPU request = p95 потребления, CPU limit krr не задаёт; memory request = limit = max + 15%.
+#   Для api и postgres лаба требует QoS Guaranteed (requests == limits). Память взята ровно по krr,
+#   а CPU limit = request поднят с запасом: лимит на уровне p95 душил бы всплески (CFS throttling → рост latency).
+
+# Части 1, 4: разнесение api по нодам
+api:
+  spread:
+    mode: topologySpread
+  priorityClassName: shop-critical        # Часть 5
+  pdb: { enabled: true, minAvailable: 2 } # Часть 5
+  resources:                              # krr: CPU 14m (p95), memory 100Mi
+    requests: { cpu: 50m, memory: 100Mi } # CPU 14m → 50m: запас на всплески при requests == limits
+    limits:   { cpu: 50m, memory: 100Mi }
+
+worker:                                   # Burstable допустим: worker не на критическом пути заказа
+  resources:                              # krr: CPU 10m (p95), memory 100Mi
+    requests: { cpu: 10m,  memory: 100Mi }
+    limits:   { cpu: 100m, memory: 100Mi } # CPU limit krr не задаёт; Kyverno требует limits — оставлен прежний 100m
+
+postgres:
+  priorityClassName: shop-critical        # Часть 5
+  pdb: { enabled: true, minAvailable: 1 } # Часть 5
+  resources:                              # krr-логика через PromQL: CPU 27m (p95), memory 209Mi max → ×1.15 = 241Mi
+    requests: { cpu: 100m, memory: 256Mi } # CPU 27m → 100m: запас на checkpoint/autovacuum; память 241Mi → 256Mi
+    limits:   { cpu: 100m, memory: 256Mi }
+
+# Часть 2: batch (параметры по умолчанию — в базовом values.yaml).
+# krr для batch (CPU 501m, memory 189Mi) не применяем: batch намеренно Burstable и «жжёт» CPU по замыслу
+batch:
+  enabled: true
+  priorityClassName: shop-batch           # Часть 5
+
+# Часть 5: PriorityClass (имена и value — в базе)
+priorityClasses:
+  create: true
+
+# Часть 9: группа алертов shop.capacity
+monitoring:
+  rules:
+    capacity: true

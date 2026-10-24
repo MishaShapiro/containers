@@ -1,0 +1,17 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: bad-latest
+  namespace: shop
+spec:
+  selector: { matchLabels: { app.kubernetes.io/name: bad } }
+  template:
+    metadata:
+      labels: { app.kubernetes.io/name: bad, app.kubernetes.io/part-of: shop }
+    spec:
+      containers:
+        - name: c
+          image: shop.local/api:latest
+          resources:
+            requests: { cpu: 10m, memory: 16Mi }
+            limits:   { cpu: 50m, memory: 64Mi }

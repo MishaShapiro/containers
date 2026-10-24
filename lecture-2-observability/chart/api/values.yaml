@@ -1,0 +1,11 @@
+image: lab2/api:1.1        # 1.1 — сборка с setuptools<81 (см. requirements.txt)
+replicas: 1
+otlpEndpoint: http://jaeger-collector.monitoring.svc.cluster.local:4317
+service:
+  type: NodePort
+  nodePort: 30082   # 30080 занят shop (лабы 3-6); NodePort уникален на весь кластер
+resources:
+  requests: { cpu: 50m, memory: 64Mi }
+  limits:   { cpu: 500m, memory: 256Mi }
+alertEcho:
+  enabled: true

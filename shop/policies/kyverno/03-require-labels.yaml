@@ -1,0 +1,24 @@
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: require-labels
+spec:
+  validationFailureAction: Enforce
+  background: true
+  rules:
+    - name: name-and-part-of
+      match:
+        any:
+          - resources:
+              kinds: [Pod]
+      exclude:
+        any:
+          - resources:
+              namespaces: [kube-system, kyverno, monitoring, cnpg-system, local-path-storage, loadtest, demo, linkerd, linkerd-viz]
+      validate:
+        message: "Под обязан иметь метки app.kubernetes.io/name и app.kubernetes.io/part-of."
+        pattern:
+          metadata:
+            labels:
+              app.kubernetes.io/name: "?*"
+              app.kubernetes.io/part-of: "?*"

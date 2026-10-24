@@ -1,0 +1,17 @@
+{{- if .Values.priorityClasses.create }}
+apiVersion: scheduling.k8s.io/v1
+kind: PriorityClass
+metadata:
+  name: {{ .Values.priorityClasses.critical.name }}
+value: {{ .Values.priorityClasses.critical.value }}
+preemptionPolicy: PreemptLowerPriority
+description: "Критический путь заказа: api, postgres"
+---
+apiVersion: scheduling.k8s.io/v1
+kind: PriorityClass
+metadata:
+  name: {{ .Values.priorityClasses.batch.name }}
+value: {{ .Values.priorityClasses.batch.value }}
+preemptionPolicy: Never     # batch сам никого не вытесняет
+description: "Фоновая аналитика, жертвуется первой"
+{{- end }}

@@ -1,0 +1,9 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: api-red-dashboard
+  labels:
+    grafana_dashboard: "1"     # sidecar Grafana подхватывает ConfigMap с этой меткой
+data:
+  red.json: |-
+{{ .Files.Get "dashboards/red.json" | indent 4 }}

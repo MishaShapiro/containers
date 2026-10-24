@@ -1,0 +1,6 @@
+apiVersion: v2
+name: shop
+description: shop — api, worker, postgres (CNPG)
+type: application
+version: 0.1.0
+appVersion: "1.0"

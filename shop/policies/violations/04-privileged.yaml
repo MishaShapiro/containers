@@ -1,0 +1,14 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: bad-privileged
+  namespace: shop
+  labels: { app.kubernetes.io/name: bad, app.kubernetes.io/part-of: shop }
+spec:
+  containers:
+    - name: c
+      image: shop.local/api:1.0
+      securityContext: { privileged: true }
+      resources:
+        requests: { cpu: 10m, memory: 16Mi }
+        limits:   { cpu: 50m, memory: 64Mi }

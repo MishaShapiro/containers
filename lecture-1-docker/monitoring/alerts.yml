@@ -1,0 +1,24 @@
+groups:
+  - name: container
+    rules:
+      - alert: ContainerMemoryNearLimit
+        expr: |
+          container_memory_working_set_bytes{container_id!=""}
+            / (container_spec_memory_limit_bytes{container_id!=""} > 0) > 0.9
+        for: 1m
+        labels: { severity: warning }
+        annotations:
+          summary: "{{ $labels.container_id }}: память > 90% лимита — следующий шаг OOM kill"
+      - alert: ContainerCPUThrottled
+        expr: |
+          rate(container_cpu_cfs_throttled_periods_total{container_id!=""}[2m])
+            / rate(container_cpu_cfs_periods_total{container_id!=""}[2m]) > 0.25
+        for: 2m
+        labels: { severity: warning }
+        annotations:
+          summary: "{{ $labels.container_id }}: >25% периодов CPU задушено — растёт задержка"
+      - alert: ContainerOOMKilled
+        expr: increase(container_oom_events_total{container_id!=""}[5m]) > 0
+        labels: { severity: critical }
+        annotations:
+          summary: "{{ $labels.container_id }}: OOM kill — процесс убит ядром, запросы оборваны"

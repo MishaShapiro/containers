@@ -1,0 +1,43 @@
+{{- if .Values.batch.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: batch
+  labels:
+    {{- include "shop.labels" . | nindent 4 }}
+    app.kubernetes.io/name: batch
+spec:
+  replicas: {{ .Values.batch.replicas }}
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: batch
+      app.kubernetes.io/part-of: shop
+  template:
+    metadata:
+      labels:
+        {{- include "shop.labels" . | nindent 8 }}
+        app.kubernetes.io/name: batch
+    spec:
+      {{- with .Values.batch.priorityClassName }}
+      priorityClassName: {{ . }}
+      {{- end }}
+      {{- with .Values.batch.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      terminationGracePeriodSeconds: 5
+      containers:
+        - name: batch
+          image: "{{ .Values.batch.image.repository }}:{{ .Values.batch.image.tag }}"
+          imagePullPolicy: {{ .Values.batch.image.pullPolicy }}
+          env:
+            {{- range $k, $v := .Values.batch.env }}
+            - name: {{ $k }}
+              value: {{ $v | quote }}
+            {{- end }}
+          securityContext:
+            privileged: false
+            allowPrivilegeEscalation: false
+          resources:
+            {{- toYaml .Values.batch.resources | nindent 12 }}
+{{- end }}

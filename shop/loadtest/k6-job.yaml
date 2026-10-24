@@ -1,0 +1,24 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: k6-order
+  namespace: loadtest
+spec:
+  backoffLimit: 0
+  template:
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: k6
+          image: grafana/k6:0.54.0
+          args: ["run", "-o", "experimental-prometheus-rw", "--tag", "testid=order", "/scripts/order.js"]
+          env:
+            - { name: K6_PROMETHEUS_RW_SERVER_URL, value: "http://kps-prometheus.monitoring.svc:9090/api/v1/write" }
+            - { name: K6_PROMETHEUS_RW_TREND_STATS, value: "p(95),p(99),avg" }
+            - { name: RATE, value: "20" }
+            - { name: DURATION, value: "15m" }
+          volumeMounts:
+            - { name: scripts, mountPath: /scripts }
+      volumes:
+        - name: scripts
+          configMap: { name: k6-scripts }

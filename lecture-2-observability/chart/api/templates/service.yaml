@@ -1,0 +1,17 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: api
+  labels:
+    app.kubernetes.io/name: api      # по этой метке его найдёт ServiceMonitor
+spec:
+  type: {{ .Values.service.type }}
+  selector:
+    app.kubernetes.io/name: api
+  ports:
+    - name: http                     # ServiceMonitor ссылается на порт по ИМЕНИ
+      port: 8080
+      targetPort: http
+      {{- if eq .Values.service.type "NodePort" }}
+      nodePort: {{ .Values.service.nodePort }}
+      {{- end }}

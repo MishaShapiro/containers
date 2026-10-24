@@ -1,0 +1,65 @@
+{
+  "title": "shop",
+  "uid": "shop",
+  "tags": ["shop"],
+  "time": { "from": "now-30m", "to": "now" },
+  "refresh": "15s",
+  "schemaVersion": 39,
+  "panels": [
+    {
+      "type": "timeseries", "title": "api: RPS по эндпоинтам",
+      "gridPos": { "x": 0, "y": 0, "w": 12, "h": 8 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "reqps" }, "overrides": [] },
+      "targets": [ { "refId": "A", "expr": "sum by (path) (rate(http_requests_total{namespace=\"shop\",job=\"api\",path!=\"/health\"}[1m]))", "legendFormat": "{{path}}" } ]
+    },
+    {
+      "type": "timeseries", "title": "api: доля 5xx",
+      "gridPos": { "x": 12, "y": 0, "w": 12, "h": 8 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "percentunit", "min": 0, "max": 1 }, "overrides": [] },
+      "targets": [ { "refId": "A", "expr": "(sum(rate(http_requests_total{namespace=\"shop\",job=\"api\",status=~\"5..\",path!=\"/health\"}[1m])) or vector(0)) / sum(rate(http_requests_total{namespace=\"shop\",job=\"api\",path!=\"/health\"}[1m]))", "legendFormat": "error ratio" } ]
+    },
+    {
+      "type": "timeseries", "title": "api: p95 по эндпоинтам",
+      "gridPos": { "x": 0, "y": 8, "w": 12, "h": 8 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "s" }, "overrides": [] },
+      "targets": [ { "refId": "A", "expr": "histogram_quantile(0.95, sum by (le, path) (rate(http_request_duration_seconds_bucket{namespace=\"shop\",job=\"api\",path!=\"/health\"}[1m])))", "legendFormat": "{{path}}" } ]
+    },
+    {
+      "type": "timeseries", "title": "Заказы: в очереди и обработано/с",
+      "gridPos": { "x": 12, "y": 8, "w": 12, "h": 8 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] },
+      "targets": [
+        { "refId": "A", "expr": "max(shop_orders_pending{namespace=\"shop\"})", "legendFormat": "pending" },
+        { "refId": "B", "expr": "sum(rate(shop_orders_processed_total{namespace=\"shop\"}[1m]))", "legendFormat": "processed/s" }
+      ]
+    },
+    {
+      "type": "stat", "title": "Postgres (CNPG) up",
+      "gridPos": { "x": 0, "y": 16, "w": 6, "h": 5 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [ { "refId": "A", "expr": "max(cnpg_collector_up{namespace=\"shop\"})", "legendFormat": "up" } ]
+    },
+    {
+      "type": "stat", "title": "Реплики api доступны",
+      "gridPos": { "x": 6, "y": 16, "w": 6, "h": 5 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [ { "refId": "A", "expr": "sum(kube_deployment_status_replicas_available{namespace=\"shop\",deployment=~\"api.*\"})", "legendFormat": "available" } ]
+    },
+    {
+      "type": "stat", "title": "Реплики worker доступны",
+      "gridPos": { "x": 12, "y": 16, "w": 6, "h": 5 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [ { "refId": "A", "expr": "sum(kube_deployment_status_replicas_available{namespace=\"shop\",deployment=\"worker\"})", "legendFormat": "available" } ]
+    },
+    {
+      "type": "stat", "title": "Рестарты подов shop (1ч)",
+      "gridPos": { "x": 18, "y": 16, "w": 6, "h": 5 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [ { "refId": "A", "expr": "sum(increase(kube_pod_container_status_restarts_total{namespace=\"shop\"}[1h]))", "legendFormat": "restarts" } ]
+    }
+  ]
+}

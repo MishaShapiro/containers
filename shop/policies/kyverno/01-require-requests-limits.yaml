@@ -1,0 +1,33 @@
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: require-requests-limits
+  annotations:
+    policies.kyverno.io/description: >-
+      Без requests планировщик не знает, сколько места занимает под; без limits
+      один под может съесть ноду и задушить соседей.
+spec:
+  validationFailureAction: Enforce
+  background: true
+  rules:
+    - name: containers-have-requests-and-limits
+      match:
+        any:
+          - resources:
+              kinds: [Pod]
+      exclude:
+        any:
+          - resources:
+              namespaces: [kube-system, kyverno, monitoring, cnpg-system, local-path-storage, loadtest, demo, linkerd, linkerd-viz]
+      validate:
+        message: "Каждый контейнер обязан иметь resources.requests и resources.limits (cpu и memory)."
+        pattern:
+          spec:
+            containers:
+              - resources:
+                  requests:
+                    cpu: "?*"
+                    memory: "?*"
+                  limits:
+                    cpu: "?*"
+                    memory: "?*"

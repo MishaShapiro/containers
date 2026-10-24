@@ -1,0 +1,12 @@
+# Часть 6, эксперимент: занять CPU нод по requests, не нагружая VM.
+# Применять: ~/containers/shop/scripts/deploy.sh 4 -f ~/containers/lecture-4-scheduling-resources/part6-fill.yaml
+# Вернуть обычное состояние: ~/containers/shop/scripts/deploy.sh 4
+# Крупный request (1 CPU) → нехватка уже при 6–7 репликах; много мелких подов переполняют память ноды.
+batch:
+  replicas: 7          # на нодах влезает ~5 таких подов → 2 останутся Pending
+  env:
+    CPU_WORKERS: "0"     # не жжём CPU: для Pending/preemption важны requests, не факт
+    MEM_MB: "10"
+  resources:
+    requests: { cpu: "1", memory: 64Mi }
+    limits:   { cpu: "1", memory: 128Mi }

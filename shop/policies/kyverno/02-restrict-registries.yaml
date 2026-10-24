@@ -1,0 +1,25 @@
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: restrict-image-registries
+spec:
+  validationFailureAction: Enforce
+  background: true
+  rules:
+    - name: trusted-registries-only
+      match:
+        any:
+          - resources:
+              kinds: [Pod]
+      exclude:
+        any:
+          - resources:
+              namespaces: [kube-system, kyverno, monitoring, cnpg-system, local-path-storage, loadtest, demo, linkerd, linkerd-viz]
+      validate:
+        message: "Разрешены только образы из shop.local/ и ghcr.io/cloudnative-pg/."
+        pattern:
+          spec:
+            containers:
+              - image: "shop.local/* | ghcr.io/cloudnative-pg/*"
+            =(initContainers):
+              - image: "shop.local/* | ghcr.io/cloudnative-pg/*"

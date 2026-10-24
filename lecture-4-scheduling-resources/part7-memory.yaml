@@ -1,0 +1,13 @@
+# Часть 7, эксперимент: давление по памяти на minikube-m02.
+# Применять: ~/containers/shop/scripts/deploy.sh 4 -f ~/containers/lecture-4-scheduling-resources/part7-memory.yaml
+# Вернуть обычное состояние: ~/containers/shop/scripts/deploy.sh 4
+batch:
+  replicas: 2
+  env:
+    CPU_WORKERS: "0"       # CPU здесь не нужен — экономим VM
+    MEM_MB: "400"          # каждая реплика удержит ~400 МБ, вдвоём ~800 МБ > 600 МБ запаса
+  nodeSelector:
+    kubernetes.io/hostname: minikube-m02
+  resources:
+    requests: { cpu: 100m, memory: 64Mi }
+    limits:   { cpu: 500m, memory: 768Mi }    # лимит ВЫШЕ MEM_MB, чтобы не словить OOMKilled

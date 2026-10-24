@@ -1,0 +1,23 @@
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: disallow-latest-tag
+spec:
+  validationFailureAction: Enforce
+  background: true
+  rules:
+    - name: require-explicit-tag
+      match:
+        any:
+          - resources:
+              kinds: [Pod]
+      exclude:
+        any:
+          - resources:
+              namespaces: [kube-system, kyverno, monitoring, cnpg-system, local-path-storage, loadtest, demo, linkerd, linkerd-viz]
+      validate:
+        message: "Образ обязан иметь явный тег, и это не :latest."
+        pattern:
+          spec:
+            containers:
+              - image: "*:* & !*:latest"

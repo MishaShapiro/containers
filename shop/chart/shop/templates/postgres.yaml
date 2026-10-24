@@ -1,0 +1,37 @@
+{{- if .Values.postgres.enabled }}
+apiVersion: postgresql.cnpg.io/v1
+kind: Cluster
+metadata:
+  name: {{ .Values.postgres.clusterName }}
+  labels:
+    {{- include "shop.labels" . | nindent 4 }}
+    app.kubernetes.io/name: postgres
+spec:
+  instances: {{ .Values.postgres.instances }}
+  imageName: {{ .Values.postgres.image }}
+  # Метки, которые CNPG проставит на ВСЕ свои объекты, включая поды: иначе их отклонит require-labels
+  inheritedMetadata:
+    labels:
+      app.kubernetes.io/name: postgres
+      app.kubernetes.io/part-of: shop
+  bootstrap:
+    initdb:
+      database: shop
+      owner: shop          # CNPG сгенерирует пароль и Secret <clusterName>-app
+  storage:
+    size: {{ .Values.postgres.storage }}
+  resources:
+    {{- toYaml .Values.postgres.resources | nindent 4 }}
+  # При удалении пода CNPG сначала делает smart shutdown: ждёт, пока клиенты (пулы api и worker)
+  # сами закроют соединения (по умолчанию до 180 с), затем fast shutdown.
+  # Для лабы сокращаем, иначе под минутами висит в Terminating
+  smartShutdownTimeout: 10
+  stopDelay: 60
+  # --- лаба 4 ---
+  {{- with .Values.postgres.priorityClassName }}
+  priorityClassName: {{ . }}
+  {{- end }}
+  # когда PDB делает чарт, свой PDB у CNPG выключаем (иначе их будет два на одни и те же поды);
+  # в базе (лаба 3) pdb.enabled=false → CNPG создаёт свой PDB, как и было
+  enablePDB: {{ not .Values.postgres.pdb.enabled }}
+{{- end }}
