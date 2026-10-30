@@ -1,0 +1,331 @@
+{
+  "uid": "lab6",
+  "title": "Lab6",
+  "schemaVersion": 39,
+  "time": {
+    "from": "now-30m",
+    "to": "now"
+  },
+  "refresh": "15s",
+  "tags": [
+    "shop",
+    "lab6"
+  ],
+  "panels": [
+    {
+      "type": "timeseries",
+      "title": "Часть 4: ошибки на backend и у клиента (FLAKY + retries)",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 0,
+        "w": 24,
+        "h": 10
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "min": 0,
+          "custom": {
+            "lineWidth": 2,
+            "fillOpacity": 10
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "усиление: запросов на backend / запросов клиента"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "none"
+              },
+              {
+                "id": "custom.axisPlacement",
+                "value": "right"
+              },
+              {
+                "id": "min",
+                "value": 1
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "blue"
+                }
+              },
+              {
+                "id": "custom.lineStyle",
+                "value": {
+                  "fill": "dash",
+                  "dash": [
+                    10,
+                    10
+                  ]
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "ошибки на backend (каждая попытка)"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "red"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "ошибки, которые увидел клиент"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "green"
+                }
+              },
+              {
+                "id": "custom.lineWidth",
+                "value": 3
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": [
+            "mean",
+            "lastNotNull"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum(rate(http_requests_total{namespace=\"shop\",version=\"v1\",path=\"/order\",status=\"500\"}[1m])) / sum(rate(http_requests_total{namespace=\"shop\",version=\"v1\",path=\"/order\"}[1m]))",
+          "legendFormat": "ошибки на backend (каждая попытка)"
+        },
+        {
+          "refId": "B",
+          "expr": "sum(rate(k6_http_reqs_total{testid=~\"flaky.*\",expected_response=\"false\"}[1m])) / sum(rate(k6_http_reqs_total{testid=~\"flaky.*\"}[1m]))",
+          "legendFormat": "ошибки, которые увидел клиент"
+        },
+        {
+          "refId": "C",
+          "expr": "sum(rate(http_requests_total{namespace=\"shop\",version=\"v1\",path=\"/order\"}[1m])) / sum(rate(k6_http_reqs_total{testid=~\"flaky.*\"}[1m]))",
+          "legendFormat": "усиление: запросов на backend / запросов клиента"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Часть 7: вес v2 по гейту и фактическая доля трафика v2",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 10,
+        "w": 12,
+        "h": 10
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "min": 0,
+          "custom": {
+            "lineWidth": 2,
+            "fillOpacity": 10
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "вес v2 в HTTPRoute (гейт)"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "blue"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "фактическая доля v2 (сервер)"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "orange"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "max(gate_v2_weight) / 100",
+          "legendFormat": "вес v2 в HTTPRoute (гейт)"
+        },
+        {
+          "refId": "B",
+          "expr": "sum(rate(http_requests_total{namespace=\"shop\",version=\"v2\",path=\"/order\"}[1m])) / sum(rate(http_requests_total{namespace=\"shop\",path=\"/order\"}[1m]))",
+          "legendFormat": "фактическая доля v2 (сервер)"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Часть 7: ошибки v2 на сервере и ошибки у клиента",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 10,
+        "w": 12,
+        "h": 10
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "min": 0,
+          "custom": {
+            "lineWidth": 2,
+            "fillOpacity": 10
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "доля 5xx у v2 (сервер)"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "red"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "ошибки у клиента (k6)"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "green"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "состояние гейта: 0 canary, 0.5 promoted, 1 rolled_back"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "purple"
+                }
+              },
+              {
+                "id": "custom.lineStyle",
+                "value": {
+                  "fill": "dash",
+                  "dash": [
+                    10,
+                    10
+                  ]
+                }
+              },
+              {
+                "id": "custom.fillOpacity",
+                "value": 0
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "(sum(rate(http_requests_total{namespace=\"shop\",version=\"v2\",path=\"/order\",status=~\"5..\"}[1m])) or vector(0)) / sum(rate(http_requests_total{namespace=\"shop\",version=\"v2\",path=\"/order\"}[1m]))",
+          "legendFormat": "доля 5xx у v2 (сервер)"
+        },
+        {
+          "refId": "B",
+          "expr": "(sum(rate(k6_http_reqs_total{testid=\"canary\",expected_response=\"false\"}[1m])) or vector(0)) / sum(rate(k6_http_reqs_total{testid=\"canary\"}[1m]))",
+          "legendFormat": "ошибки у клиента (k6)"
+        },
+        {
+          "refId": "C",
+          "expr": "max(gate_state) / 2",
+          "legendFormat": "состояние гейта: 0 canary, 0.5 promoted, 1 rolled_back"
+        }
+      ]
+    }
+  ]
+}

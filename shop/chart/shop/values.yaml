@@ -5,7 +5,6 @@ api:
     pullPolicy: IfNotPresent
   replicas: 3
   env:
-    VERSION: v1
     HEALTH_FAIL: "false"
   resources:
     requests: { cpu: 50m, memory: 96Mi }
@@ -19,6 +18,20 @@ api:
     mode: none                 # none | topologySpread | antiAffinity
   priorityClassName: ""
   pdb: { enabled: false, minAvailable: 2 }
+  # --- лаба 6: Deployment на каждую версию (заменяют api.replicas и api.image.tag) ---
+  versions:
+    v1:
+      enabled: true
+      tag: "1.1"
+      replicas: 3
+      env:
+        FLAKY: "false"
+    v2:
+      enabled: false
+      tag: "1.1"
+      replicas: 1
+      env:
+        FAIL: "false"
 
 worker:
   image:
@@ -62,7 +75,58 @@ priorityClasses:
   critical: { name: shop-critical, value: 100000 }
   batch:    { name: shop-batch,    value: 100 }
 
+# --- лаба 5: NetworkPolicy (выключено) ---
+networkPolicy:
+  enabled: false                   # включает лаба 5
+  monitoringNamespace: monitoring
+  dns:
+    enabled: true
+  api:
+    port: 8080
+  postgres:
+    port: 5432
+    allowFrom: [api, worker]       # значения метки app.kubernetes.io/name
+  cilium:
+    enabled: true                  # CiliumNetworkPolicy для доступа Postgres к kube-apiserver
+  overbroadDeny:
+    enabled: false                 # вариант поломки для Части 6
+
+# --- лаба 6: canary, mesh, гейт (выключено) ---
+canary:
+  enabled: false
+  v2Weight: 10
+
+mesh:
+  enabled: false
+  proxy:
+    cpuRequest: 20m
+    cpuLimit: 200m
+    memoryRequest: 32Mi
+    memoryLimit: 128Mi
+  retries:
+    enabled: false
+    statuses: "5xx"
+    limit: 3
+    timeout: 2s
+  failureAccrual:
+    enabled: false
+    consecutiveFailures: 7
+
+gate:
+  enabled: false
+  image: shop.local/gate:1.1
+  env:
+    INTERVAL: "15"
+    START_WEIGHT: "10"
+    STEP: "20"
+    CHECKS_PER_STEP: "2"
+    MAX_ERROR_RATIO: "0.05"
+    MAX_P95_SECONDS: "0.5"
+
 monitoring:
   enabled: true          # Часть 5
+  hubble: false          # ServiceMonitor метрик Hubble (лаба 5, Часть 7)
   rules:
     capacity: false      # правила лабы 4 (Часть 9)
+    network: false       # правила лабы 5 (Часть 7)
+    mesh: false          # правила лабы 6 (Часть 9)

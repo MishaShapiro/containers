@@ -1,0 +1,11 @@
+# values лабы 5: всё, что лаба 5 включила или поменяла поверх лабы 4
+batch:
+  enabled: false
+
+networkPolicy:
+  enabled: true
+
+monitoring:
+  hubble: true
+  rules:
+    network: true

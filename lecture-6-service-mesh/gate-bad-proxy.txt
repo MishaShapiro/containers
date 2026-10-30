@@ -1,0 +1,6 @@
+# 2026-10-29 23:16:58 UTC linkerd diagnostics proxy-metrics -n loadtest pod/k6-canary-9cn9b (backend api-v2)
+outbound_http_route_backend_response_statuses_total{backend_name="api-v2",http_status="201",error=""} 4685
+outbound_http_route_backend_response_statuses_total{backend_name="api-v2",http_status="",error="FAIL_FAST"} 309
+outbound_http_route_backend_response_statuses_total{backend_name="api-v2",http_status="500",error="UNKNOWN"} 35
+outbound_http_balancer_endpoints{endpoint_state="pending",backend_name="api-v2",} 1
+outbound_http_balancer_endpoints{endpoint_state="ready",backend_name="api-v2",} 0

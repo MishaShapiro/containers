@@ -9,7 +9,7 @@ spec:
     matchExpressions:
       - key: app.kubernetes.io/name
         operator: In
-        values: [api, worker]
+        values: [api, worker, gate]
   endpoints:
     - port: http
       path: /metrics
@@ -47,7 +47,7 @@ spec:
             summary: "shop api: >5% ответов 5xx"
         - alert: ShopApiReplicasUnavailable
           expr: |
-            kube_deployment_status_replicas_unavailable{namespace="{{ .Release.Namespace }}",deployment="api"} > 0
+            kube_deployment_status_replicas_unavailable{namespace="{{ .Release.Namespace }}",deployment=~"api-.*"} > 0
           for: 2m
           labels: { severity: warning }
           annotations:
@@ -88,4 +88,108 @@ spec:
           annotations:
             summary: "Нода под давлением по памяти — kubelet выселяет поды"
     {{- end }}
+    {{- if .Values.monitoring.rules.network }}
+    # --- лаба 5 ---
+    - name: shop.network
+      rules:
+        - alert: ShopPolicyDrops
+          expr: |
+            sum by (source, destination) (
+              rate(hubble_drop_total{reason="POLICY_DENIED",destination=~"{{ .Release.Namespace }}/.*"}[2m])
+            ) > 0.05
+          for: 2m
+          labels: { severity: warning }
+          annotations:
+            summary: "Политики режут трафик к подам shop: либо сломано правило, либо кто-то лезет куда не положено"
+        - alert: ShopDNSBlocked
+          expr: |
+            sum(rate(hubble_flows_processed_total{verdict="DROPPED",protocol="UDP",source="{{ .Release.Namespace }}"}[2m])) > 0
+          for: 1m
+          labels: { severity: critical }
+          annotations:
+            summary: "Поды shop не могут резолвить имена (UDP-дропы, обычно DNS) — сервисы не найдут друг друга"
+        - alert: ShopWorkerDbUnreachable
+          expr: |
+            time() - max(shop_worker_last_success_timestamp_seconds{namespace="{{ .Release.Namespace }}"}) > 60
+          for: 1m
+          labels: { severity: critical }
+          annotations:
+            summary: "worker больше минуты не может обратиться к Postgres — заказы не обрабатываются"
+    {{- end }}
+{{- if .Values.monitoring.hubble }}
+---
+# лаба 5: метрики Hubble (сервис hubble-metrics в kube-system)
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: hubble
+  labels: {{- include "shop.labels" . | nindent 4 }}
+spec:
+  namespaceSelector:
+    matchNames: [kube-system]
+  selector:
+    matchLabels: { k8s-app: hubble }
+  endpoints:
+    - port: hubble-metrics
+      interval: 15s
+{{- end }}
+{{- end }}
+
+{{- if .Values.mesh.enabled }}
+---
+apiVersion: monitoring.coreos.com/v1
+kind: PodMonitor
+metadata:
+  name: linkerd-proxy
+  labels: {{- include "shop.labels" . | nindent 4 }}
+spec:
+  namespaceSelector:
+    matchNames: [{{ .Release.Namespace }}, loadtest]
+  selector:
+    matchExpressions:
+      - { key: linkerd.io/control-plane-ns, operator: Exists }
+  podMetricsEndpoints:
+    - port: linkerd-admin
+      path: /metrics
+      interval: 15s
+      relabelings:
+        - sourceLabels: [__meta_kubernetes_pod_label_version]
+          targetLabel: version
+        - sourceLabels: [__meta_kubernetes_pod_label_app_kubernetes_io_name]
+          targetLabel: app
+{{- end }}
+
+{{- if and .Values.mesh.enabled .Values.monitoring.rules.mesh }}
+---
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: shop-mesh
+  labels: {{- include "shop.labels" . | nindent 4 }}
+spec:
+  groups:
+    - name: shop.mesh
+      rules:
+        - alert: ShopCanaryV2Failing
+          expr: |
+            sum(rate(response_total{app="api",version="v2",direction="inbound",classification="failure"}[1m]))
+              / sum(rate(response_total{app="api",version="v2",direction="inbound"}[1m])) > 0.05
+          for: 1m
+          labels: { severity: critical }
+          annotations:
+            summary: "v2 отдаёт >5% ошибок по данным mesh — проверь, откатил ли гейт"
+        - alert: ShopCanaryRolledBack
+          expr: max(gate_state{namespace="{{ .Release.Namespace }}"}) == 2
+          for: 0m
+          labels: { severity: warning }
+          annotations:
+            summary: "Гейт откатил релиз v2 — нужен разбор"
+        - alert: ShopBackendErrorsMaskedByRetries
+          expr: |
+            sum(rate(http_requests_total{namespace="{{ .Release.Namespace }}",job="api",status=~"5.."}[5m]))
+              / sum(rate(http_requests_total{namespace="{{ .Release.Namespace }}",job="api"}[5m])) > 0.1
+          for: 5m
+          labels: { severity: warning }
+          annotations:
+            summary: "Код api отдаёт >10% 5xx — retries могут это маскировать"
 {{- end }}

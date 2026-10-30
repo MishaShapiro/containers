@@ -1,0 +1,14 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: intruder
+  namespace: shop
+  labels: { app.kubernetes.io/name: intruder, app.kubernetes.io/part-of: shop }
+spec:
+  containers:
+    - name: c
+      image: shop.local/api:1.0
+      command: ["sleep", "infinity"]
+      resources:
+        requests: { cpu: 10m, memory: 32Mi }
+        limits:   { cpu: 100m, memory: 64Mi }

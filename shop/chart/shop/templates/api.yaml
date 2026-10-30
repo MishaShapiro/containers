@@ -1,66 +1,75 @@
+{{- $root := . }}
+{{- range $ver, $cfg := .Values.api.versions }}
+{{- if $cfg.enabled }}
+---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: api
+  name: api-{{ $ver }}
   labels:
-    {{- include "shop.labels" . | nindent 4 }}
+    {{- include "shop.labels" $root | nindent 4 }}
     app.kubernetes.io/name: api
+    version: {{ $ver }}
 spec:
-  replicas: {{ .Values.api.replicas }}
+  replicas: {{ $cfg.replicas }}
   strategy:
     type: RollingUpdate
-    rollingUpdate:
-      maxSurge: 1          # поднимаем по одному новому
-      maxUnavailable: 0    # старый убираем только когда новый Ready
+    rollingUpdate: { maxSurge: 1, maxUnavailable: 0 }
   selector:
     matchLabels:
       app.kubernetes.io/name: api
       app.kubernetes.io/part-of: shop
+      version: {{ $ver }}
   template:
     metadata:
       labels:
-        {{- include "shop.labels" . | nindent 8 }}
+        {{- include "shop.labels" $root | nindent 8 }}
         app.kubernetes.io/name: api
+        version: {{ $ver }}
+      {{- if $root.Values.mesh.enabled }}
+      annotations:
+        linkerd.io/inject: enabled
+        # у прокси должны быть requests/limits — этого требует Kyverno
+        config.linkerd.io/proxy-cpu-request: {{ $root.Values.mesh.proxy.cpuRequest | quote }}
+        config.linkerd.io/proxy-cpu-limit: {{ $root.Values.mesh.proxy.cpuLimit | quote }}
+        config.linkerd.io/proxy-memory-request: {{ $root.Values.mesh.proxy.memoryRequest | quote }}
+        config.linkerd.io/proxy-memory-limit: {{ $root.Values.mesh.proxy.memoryLimit | quote }}
+      {{- end }}
     spec:
-      {{- with .Values.api.priorityClassName }}
+      {{- with $root.Values.api.priorityClassName }}
       priorityClassName: {{ . }}
       {{- end }}
-      {{- if eq .Values.api.spread.mode "topologySpread" }}
+      {{- if eq $root.Values.api.spread.mode "topologySpread" }}
       topologySpreadConstraints:
         - maxSkew: 1
           topologyKey: kubernetes.io/hostname
-          whenUnsatisfiable: DoNotSchedule
+          whenUnsatisfiable: ScheduleAnyway   # версий теперь несколько, жёсткое правило мешало бы на 2 нодах
           labelSelector:
             matchLabels:
               app.kubernetes.io/name: api
-              app.kubernetes.io/part-of: shop
+              version: {{ $ver }}
           matchLabelKeys: [pod-template-hash]
-      {{- else if eq .Values.api.spread.mode "antiAffinity" }}
-      affinity:
-        podAntiAffinity:
-          preferredDuringSchedulingIgnoredDuringExecution:
-            - weight: 100
-              podAffinityTerm:
-                topologyKey: kubernetes.io/hostname
-                labelSelector:
-                  matchLabels:
-                    app.kubernetes.io/name: api
-                    app.kubernetes.io/part-of: shop
       {{- end }}
       terminationGracePeriodSeconds: 30
       containers:
         - name: api
-          image: "{{ .Values.api.image.repository }}:{{ .Values.api.image.tag }}"
-          imagePullPolicy: {{ .Values.api.image.pullPolicy }}
+          image: "{{ $root.Values.api.image.repository }}:{{ $cfg.tag }}"
+          imagePullPolicy: {{ $root.Values.api.image.pullPolicy }}
           ports:
             - name: http
               containerPort: 8080
           env:
-            {{- range $k, $v := .Values.api.env }}
+            - name: VERSION
+              value: {{ $ver }}
+            {{- range $k, $v := $root.Values.api.env }}
             - name: {{ $k }}
               value: {{ $v | quote }}
             {{- end }}
-            {{- include "shop.dbEnv" . | nindent 12 }}
+            {{- range $k, $v := $cfg.env }}
+            - name: {{ $k }}
+              value: {{ $v | quote }}
+            {{- end }}
+            {{- include "shop.dbEnv" $root | nindent 12 }}
           readinessProbe:
             httpGet: { path: /health, port: http }
             periodSeconds: 3
@@ -69,17 +78,36 @@ spec:
             httpGet: { path: /health, port: http }
             initialDelaySeconds: 15
             periodSeconds: 10
-            failureThreshold: 3
           lifecycle:
             preStop:
-              exec:
-                command: ["sleep", "5"]   # даём kube-proxy убрать под из Endpoints до SIGTERM
+              exec: { command: ["sleep", "5"] }
           securityContext:
             privileged: false
             allowPrivilegeEscalation: false
           resources:
-            {{- toYaml .Values.api.resources | nindent 12 }}
+            {{- toYaml $root.Values.api.resources | nindent 12 }}
 ---
+# Service конкретной версии — backend для HTTPRoute. Метка name=api-vX, а не api,
+# чтобы ServiceMonitor не скрейпил один и тот же под дважды (через api и через api-vX)
+apiVersion: v1
+kind: Service
+metadata:
+  name: api-{{ $ver }}
+  labels:
+    {{- include "shop.labels" $root | nindent 4 }}
+    app.kubernetes.io/name: api-{{ $ver }}
+spec:
+  selector:
+    app.kubernetes.io/name: api
+    version: {{ $ver }}
+  ports:
+    - name: http
+      port: 8080
+      targetPort: http
+{{- end }}
+{{- end }}
+---
+# Общий Service: точка входа клиентов (и parent для HTTPRoute)
 apiVersion: v1
 kind: Service
 metadata:
@@ -87,6 +115,18 @@ metadata:
   labels:
     {{- include "shop.labels" . | nindent 4 }}
     app.kubernetes.io/name: api
+  {{- if .Values.mesh.enabled }}
+  annotations:
+    {{- if .Values.mesh.retries.enabled }}
+    retry.linkerd.io/http: {{ .Values.mesh.retries.statuses | quote }}
+    retry.linkerd.io/limit: {{ .Values.mesh.retries.limit | quote }}
+    retry.linkerd.io/timeout: {{ .Values.mesh.retries.timeout | quote }}
+    {{- end }}
+    {{- if .Values.mesh.failureAccrual.enabled }}
+    balancer.linkerd.io/failure-accrual: consecutive
+    balancer.linkerd.io/failure-accrual-consecutive-max-failures: {{ .Values.mesh.failureAccrual.consecutiveFailures | quote }}
+    {{- end }}
+  {{- end }}
 spec:
   type: {{ .Values.api.service.type }}
   selector:

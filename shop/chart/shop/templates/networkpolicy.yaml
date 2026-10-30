@@ -1,0 +1,208 @@
+{{- if .Values.networkPolicy.enabled }}
+{{- $np := .Values.networkPolicy }}
+{{- $db := .Values.postgres.clusterName }}
+# 1. default-deny: весь входящий И исходящий трафик подов namespace запрещён
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-all
+spec:
+  podSelector: {}
+  policyTypes: [Ingress, Egress]
+{{- if $np.dns.enabled }}
+---
+# 2. DNS для всех подов namespace
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-dns-egress
+spec:
+  podSelector: {}
+  policyTypes: [Egress]
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels: { kubernetes.io/metadata.name: kube-system }
+          podSelector:
+            matchLabels: { k8s-app: kube-dns }
+      ports:
+        - { protocol: UDP, port: 53 }
+        - { protocol: TCP, port: 53 }
+{{- end }}
+---
+# 3. api — публичная точка входа: открыт на своём порту для любого источника (NodePort, loadtest, Prometheus)
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: api-ingress
+spec:
+  podSelector:
+    matchLabels: { app.kubernetes.io/name: api }
+  policyTypes: [Ingress]
+  ingress:
+    - ports:
+        - { protocol: TCP, port: {{ $np.api.port }} }
+        {{- if .Values.mesh.enabled }}
+        - { protocol: TCP, port: 4143 }   # inbound прокси (mesh-трафик)
+        - { protocol: TCP, port: 4190 }   # tap (linkerd viz)
+        - { protocol: TCP, port: 4191 }   # admin: метрики прокси, health
+        {{- end }}
+---
+# 4. worker принимает только скрейп Prometheus
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: worker-ingress-monitoring
+spec:
+  podSelector:
+    matchLabels: { app.kubernetes.io/name: worker }
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels: { kubernetes.io/metadata.name: {{ $np.monitoringNamespace }} }
+      ports:
+        - { protocol: TCP, port: 8080 }
+---
+# 5. api и worker → postgres (egress-сторона)
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: db-clients-egress
+spec:
+  podSelector:
+    matchExpressions:
+      - { key: app.kubernetes.io/name, operator: In, values: [api, worker] }
+  policyTypes: [Egress]
+  egress:
+    - to:
+        - podSelector:
+            matchLabels: { cnpg.io/cluster: {{ $db }} }
+      ports:
+        - { protocol: TCP, port: 5432 }
+---
+# 6. postgres: входящий от клиентов, своих реплик, оператора и Prometheus (ingress-сторона)
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: postgres-ingress
+spec:
+  podSelector:
+    matchLabels: { cnpg.io/cluster: {{ $db }} }
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - podSelector:
+            matchExpressions:
+              - { key: app.kubernetes.io/name, operator: In, values: {{ toJson $np.postgres.allowFrom }} }
+      ports:
+        - { protocol: TCP, port: {{ $np.postgres.port }} }
+    - from:
+        - podSelector:
+            matchLabels: { cnpg.io/cluster: {{ $db }} }
+      ports:
+        - { protocol: TCP, port: 5432 }
+        - { protocol: TCP, port: 8000 }
+    - from:
+        - namespaceSelector:
+            matchLabels: { kubernetes.io/metadata.name: cnpg-system }
+      ports:
+        - { protocol: TCP, port: 8000 }
+    - from:
+        - namespaceSelector:
+            matchLabels: { kubernetes.io/metadata.name: {{ $np.monitoringNamespace }} }
+      ports:
+        - { protocol: TCP, port: 9187 }
+---
+# 7. postgres → свои реплики (репликация/статус)
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: postgres-egress-peers
+spec:
+  podSelector:
+    matchLabels: { cnpg.io/cluster: {{ $db }} }
+  policyTypes: [Egress]
+  egress:
+    - to:
+        - podSelector:
+            matchLabels: { cnpg.io/cluster: {{ $db }} }
+      ports:
+        - { protocol: TCP, port: 5432 }
+        - { protocol: TCP, port: 8000 }
+{{- if $np.cilium.enabled }}
+---
+# 8. postgres → kube-apiserver. Обычный ipBlock здесь не сработает: в Cilium API-сервер
+#    имеет особую identity (kube-apiserver/host), а не "world"
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: postgres-egress-apiserver
+spec:
+  endpointSelector:
+    matchLabels:
+      cnpg.io/cluster: {{ $db }}
+  egress:
+    - toEntities: [kube-apiserver]
+{{- end }}
+{{- if $np.overbroadDeny.enabled }}
+---
+# Вариант поломки: «закрыть api доступ к worker», но селектор слишком широкий — part-of=shop есть и у Postgres
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: api-deny-internal
+spec:
+  endpointSelector:
+    matchLabels: { app.kubernetes.io/name: api }
+  egressDeny:
+    - toEndpoints:
+        - matchLabels: { app.kubernetes.io/part-of: shop }
+{{- end }}
+{{- if .Values.mesh.enabled }}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: api-egress-linkerd
+spec:
+  podSelector:
+    matchLabels: { app.kubernetes.io/name: api }
+  policyTypes: [Egress]
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels: { kubernetes.io/metadata.name: linkerd }
+{{- end }}
+{{- if .Values.gate.enabled }}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: gate
+spec:
+  podSelector:
+    matchLabels: { app.kubernetes.io/name: gate }
+  policyTypes: [Ingress, Egress]
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels: { kubernetes.io/metadata.name: {{ $np.monitoringNamespace }} }
+      ports: [{ protocol: TCP, port: 8000 }]
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels: { kubernetes.io/metadata.name: {{ $np.monitoringNamespace }} }
+      ports: [{ protocol: TCP, port: 9090 }]
+---
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: gate-egress-apiserver
+spec:
+  endpointSelector:
+    matchLabels: { app.kubernetes.io/name: gate }
+  egress:
+    - toEntities: [kube-apiserver]
+{{- end }}
+{{- end }}

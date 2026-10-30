@@ -1,0 +1,289 @@
+{
+  "uid": "lab5",
+  "title": "Lab5",
+  "schemaVersion": 39,
+  "time": {
+    "from": "now-30m",
+    "to": "now"
+  },
+  "refresh": "15s",
+  "tags": [
+    "shop",
+    "lab5"
+  ],
+  "panels": [
+    {
+      "type": "timeseries",
+      "title": "Часть 2: непрерывность под хаосом подов",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 0,
+        "w": 24,
+        "h": 10
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "lineWidth": 2,
+            "fillOpacity": 10
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "поды api/worker моложе 60 с"
+            },
+            "properties": [
+              {
+                "id": "custom.axisPlacement",
+                "value": "right"
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "orange"
+                }
+              },
+              {
+                "id": "custom.axisLabel",
+                "value": "подов"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "успешные запросы/с"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "green"
+                }
+              },
+              {
+                "id": "custom.axisLabel",
+                "value": "запросов/с"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "неуспешные запросы/с"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "red"
+                }
+              },
+              {
+                "id": "custom.lineWidth",
+                "value": 3
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum(rate(k6_http_reqs_total{testid=\"chaos\",expected_response=\"true\"}[30s]))",
+          "legendFormat": "успешные запросы/с"
+        },
+        {
+          "refId": "B",
+          "expr": "sum(rate(k6_http_reqs_total{testid=\"chaos\",expected_response=\"false\"}[30s])) or vector(0)",
+          "legendFormat": "неуспешные запросы/с"
+        },
+        {
+          "refId": "C",
+          "expr": "count(time() - kube_pod_created{namespace=\"shop\",pod=~\"(api|worker)-.*\"} < 60) or vector(0)",
+          "legendFormat": "поды api/worker моложе 60 с"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Часть 7: дропы политик (источник → получатель)",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 10,
+        "w": 12,
+        "h": 8
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "lineWidth": 2,
+            "fillOpacity": 10
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "right",
+          "calcs": [
+            "max",
+            "lastNotNull"
+          ],
+          "sortBy": "Max",
+          "sortDesc": true
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (source, destination) (rate(hubble_drop_total{reason=\"POLICY_DENIED\"}[1m]))",
+          "legendFormat": "{{source}} → {{destination}}"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Часть 7: вердикты потоков из shop",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 10,
+        "w": 12,
+        "h": 8
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "lineWidth": 2,
+            "fillOpacity": 10
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (verdict) (rate(hubble_flows_processed_total{source=\"shop\"}[1m]))",
+          "legendFormat": "{{verdict}}"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Часть 7: ответы DNS (CoreDNS) по rcode",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 18,
+        "w": 12,
+        "h": 8
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "lineWidth": 2,
+            "fillOpacity": 10
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (rcode) (rate(coredns_dns_responses_total[1m]))",
+          "legendFormat": "{{rcode}}"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Часть 7: новые TCP-соединения (SYN)",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 18,
+        "w": 12,
+        "h": 8
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "lineWidth": 2,
+            "fillOpacity": 10
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum(rate(hubble_tcp_flags_total{flag=\"SYN\"}[1m]))",
+          "legendFormat": "SYN/с"
+        }
+      ]
+    }
+  ]
+}

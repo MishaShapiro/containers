@@ -1,0 +1,28 @@
+# values лабы 6: всё, что лаба 6 включила или поменяла поверх лаб 4-5
+batch:
+  enabled: false
+worker:
+  replicas: 1
+api:
+  versions:
+    v1:
+      replicas: 2
+    v2:
+      enabled: true
+
+mesh:
+  enabled: true
+  retries:
+    enabled: true
+  failureAccrual:
+    enabled: true
+
+canary:
+  enabled: true
+
+gate:
+  enabled: true
+
+monitoring:
+  rules:
+    mesh: true

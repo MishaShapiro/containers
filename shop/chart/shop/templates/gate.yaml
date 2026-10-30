@@ -1,0 +1,73 @@
+{{- if .Values.gate.enabled }}
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: gate
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: gate
+rules:
+  - apiGroups: [gateway.networking.k8s.io]
+    resources: [httproutes]
+    verbs: [get, update, patch]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: gate
+subjects:
+  - kind: ServiceAccount
+    name: gate
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: gate
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: gate
+  labels:
+    {{- include "shop.labels" . | nindent 4 }}
+    app.kubernetes.io/name: gate
+spec:
+  replicas: 1
+  strategy: { type: Recreate }     # строго один гейт
+  selector:
+    matchLabels: { app.kubernetes.io/name: gate, app.kubernetes.io/part-of: shop }
+  template:
+    metadata:
+      labels:
+        {{- include "shop.labels" . | nindent 8 }}
+        app.kubernetes.io/name: gate
+    spec:
+      serviceAccountName: gate
+      containers:
+        - name: gate
+          image: {{ .Values.gate.image }}
+          imagePullPolicy: IfNotPresent
+          ports: [{ name: http, containerPort: 8000 }]
+          env:
+            - { name: NAMESPACE, value: {{ .Release.Namespace | quote }} }
+            {{- range $k, $v := .Values.gate.env }}
+            - name: {{ $k }}
+              value: {{ $v | quote }}
+            {{- end }}
+          securityContext: { privileged: false, allowPrivilegeEscalation: false }
+          resources:
+            requests: { cpu: 20m, memory: 64Mi }
+            limits:   { cpu: 200m, memory: 128Mi }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: gate
+  labels:
+    {{- include "shop.labels" . | nindent 4 }}
+    app.kubernetes.io/name: gate
+spec:
+  selector: { app.kubernetes.io/name: gate }
+  ports: [{ name: http, port: 8000, targetPort: http }]
+{{- end }}

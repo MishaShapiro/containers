@@ -16,10 +16,10 @@ spec:
           - resources:
               namespaces: [kube-system, kyverno, monitoring, cnpg-system, local-path-storage, loadtest, demo, linkerd, linkerd-viz]
       validate:
-        message: "Разрешены только образы из shop.local/ и ghcr.io/cloudnative-pg/."
+        message: "Разрешены только образы из shop.local/, ghcr.io/cloudnative-pg/ и cr.l5d.io/linkerd/."
         pattern:
           spec:
             containers:
-              - image: "shop.local/* | ghcr.io/cloudnative-pg/*"
+              - image: "shop.local/* | ghcr.io/cloudnative-pg/* | cr.l5d.io/linkerd/*"
             =(initContainers):
-              - image: "shop.local/* | ghcr.io/cloudnative-pg/*"
+              - image: "shop.local/* | ghcr.io/cloudnative-pg/* | cr.l5d.io/linkerd/*"
